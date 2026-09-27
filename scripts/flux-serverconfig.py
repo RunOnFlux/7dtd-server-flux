@@ -133,7 +133,7 @@ def shown(name, value):
 
 
 def apply(path, env, data_dir):
-    with open(path, encoding="utf-8-sig") as f:
+    with open(path, encoding="utf-8-sig", newline="") as f:
         raw = f.read()
     with open(path, "rb") as f:
         bom = f.read(3) == b"\xef\xbb\xbf"
@@ -154,7 +154,7 @@ def apply(path, env, data_dir):
         print("%s=%s (%s)" % (name, shown(name, value), why))
     if text != raw:
         tmp = path + ".flux-tmp"
-        with open(tmp, "w", encoding="utf-8-sig" if bom else "utf-8") as f:
+        with open(tmp, "w", encoding="utf-8-sig" if bom else "utf-8", newline="") as f:
             f.write(text)
         os.replace(tmp, path)
 
