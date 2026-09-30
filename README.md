@@ -82,9 +82,23 @@ command from inside the container.
 ```bash
 ./tests/test-flux.sh
 docker build -t 7dtd-server-flux:local .
-docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -x scripts/*.sh tests/*.sh
+./tests/test-image.sh
+docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -x scripts/*.sh tests/*.sh tests/image/*.sh
 ```
 
-CI (`.github/workflows/build.yml`) runs the tests on every push and pull request, and publishes
-`:latest` and `:<commit>` on every push to `main` and weekly. It needs `DOCKERHUB_USERNAME` and
-`DOCKERHUB_TOKEN`.
+`tests/test-flux.sh` tests the scripts with the machine's own tools. `tests/test-image.sh` runs
+them INSIDE the built image, with a stand-in SteamCMD and server under the real supervisor: it is
+what catches a package the image lacks. 1.0.0 passed the first and could not unpack a mod
+(`python3-minimal` has no `zipfile`).
+
+CI (`.github/workflows/build.yml`) runs the unit tests on every push and pull request. On every
+push to `main`, and weekly, it builds the image, runs `tests/test-image.sh` in it, and only then
+publishes `:latest`, `:<version>` and `:<commit>`. The version is the `VERSION` file; bump it with
+any change to what the image does. It needs `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+
+## Versions
+
+- **1.0.1**: `MODS_URLS` works. The image installed `python3-minimal`, which lacks `shutil`,
+  `zipfile` and `tarfile`, so `flux-unpack.py` failed on its imports and no mod archive was ever
+  unpacked. Now full `python3`, and CI tests the built image before publishing it.
+- **1.0.0**: first image.

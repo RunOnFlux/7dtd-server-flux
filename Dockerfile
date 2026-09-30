@@ -10,9 +10,11 @@ FROM steamcmd/steamcmd:ubuntu-24
 ARG DEBIAN_FRONTEND=noninteractive
 ARG FLUX_IMAGE_VERSION=dev
 
+# python3, NOT python3-minimal: the minimal package leaves out shutil, zipfile and tarfile, and
+# flux-unpack.py (MODS_URLS) needs all three. tests/test-image.sh runs the scripts inside the image.
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
-        ca-certificates curl procps tzdata python3-minimal && \
+        ca-certificates curl procps tzdata python3 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY scripts/flux-lib.sh scripts/flux-entrypoint.sh scripts/flux-scheduler.sh \

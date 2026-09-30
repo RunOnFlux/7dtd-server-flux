@@ -18,8 +18,12 @@ finished generation is followed by the next one in place.
 ```bash
 ./tests/test-flux.sh
 docker build -t 7dtd-server-flux:local .
-docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -x scripts/*.sh tests/*.sh
+./tests/test-image.sh                    # the scripts INSIDE the built image; CI gates the publish on it
+docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -x scripts/*.sh tests/*.sh tests/image/*.sh
 ```
+
+A change to what the image does bumps `VERSION` (the `:<version>` tag and `FLUX_IMAGE_VERSION`)
+and gets a line under "Versions" in the README.
 
 ## The files
 
@@ -49,5 +53,8 @@ docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -x scripts/*.s
   that must not advertise crossplay sets `SDTD_ServerAllowCrossplay=false`.
 - **Flux stops a container with Docker's default 10 seconds.** Console shutdown measured 3.5 s.
   Anything added to the stop path has to fit in that margin.
+- **The unit tests run with the machine's Python, not the image's.** A module or tool the image
+  lacks passes them and fails in production (1.0.0: `python3-minimal`, no `zipfile`). Anything a
+  script newly needs gets a check in `tests/image/in-container.sh`.
 - **Our log lives in `data/flux/`, the game's in `data/logs/`.** Keep them apart if a panel ever
   reads the newest game log.
