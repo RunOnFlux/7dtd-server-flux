@@ -98,6 +98,13 @@ any change to what the image does. It needs `DOCKERHUB_USERNAME` and `DOCKERHUB_
 
 ## Versions
 
+- **1.0.2**: a restart is never forced early. The stop grace (`FLUX_STOP_GRACE`) counted from the
+  first restart request of the whole generation, so once one had come and gone the next, the
+  daily restart included, was SIGKILLed the moment it was asked for, before its save. And a
+  request made while the server was still being prepared (the Steam update, the backup) was
+  carried into the server that then started, which was killed a minute in. Now each request gets
+  its own full grace, one made before the start is dropped (and logged), and a forced stop is
+  sent once.
 - **1.0.1**: `MODS_URLS` works. The image installed `python3-minimal`, which lacks `shutil`,
   `zipfile` and `tarfile`, so `flux-unpack.py` failed on its imports and no mod archive was ever
   unpacked. Now full `python3`, and CI tests the built image before publishing it.

@@ -213,6 +213,15 @@ start_generation() {
   flux_prune "${FLUX_GAME_LOG_DIR}" '*-server.log' "${FLUX_GAME_LOG_KEEP}"
   [ "${terminating}" = "1" ] && return 2
 
+  # A restart asked for while this generation was still being prepared (the Steam update, the
+  # backup) has nothing to restart: the server about to start IS the new one. Left in place, the
+  # marker read as a request to THIS server, and wait_for_generation killed it FLUX_STOP_GRACE
+  # seconds into its start, unsaved, often while it was generating a world.
+  if [ -f "${FLUX_RESTART_MARKER}" ]; then
+    flux_log "a restart was asked for before the server started ($(cat "${FLUX_RESTART_MARKER}" 2>/dev/null)); starting it fresh instead"
+    rm -f "${FLUX_RESTART_MARKER}"
+  fi
+
   log_file="${FLUX_GAME_LOG_DIR}/$(date +%Y%m%d-%H%M%S)-server.log"
   : >"${log_file}"
   flux_log "starting the server (generation ${generation}), log ${log_file}"
@@ -245,6 +254,11 @@ sweep_generation() {
 
 # Waits for the game to end. A requested stop or restart that is not honoured within
 # FLUX_STOP_GRACE ends it by force.
+#
+# The grace runs from when THIS request was first seen, and a request that goes away (its marker
+# removed) ends it: a later one gets a full grace of its own. The clock used to be kept for the
+# rest of the generation, so once any marker had come and gone, the next restart, the daily one
+# included, was SIGKILLed the second it was asked for, before its save.
 wait_for_generation() {
   local asked_at=0 now
   while kill -0 "${game_pid}" 2>/dev/null; do
@@ -257,7 +271,12 @@ wait_for_generation() {
       if [ $((now - asked_at)) -ge "${FLUX_STOP_GRACE}" ]; then
         flux_log "WARN the server was asked to stop ${FLUX_STOP_GRACE}s ago and has not; ending it"
         kill -KILL "${game_pid}" 2>/dev/null
+        # Out at once: until `wait` reaps it, the killed process still answers `kill -0`, and the
+        # loop logged (and sent) the kill again every second.
+        break
       fi
+    else
+      asked_at=0
     fi
   done
   wait "${game_pid}" 2>/dev/null

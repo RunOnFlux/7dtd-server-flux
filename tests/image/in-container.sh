@@ -56,6 +56,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "${dir}" ] || exit 0
+# A slow update, for the tests of a restart asked for while the server is still being prepared.
+[ -f /tmp/steam-slow ] && sleep 4
 mkdir -p "${dir}/Mods/0_TFP_Harmony"
 cp /t/fixtures/serverconfig.xml "${dir}/serverconfig.xml"
 cat >"${dir}/7DaysToDieServer.x86_64" <<'GAME'
@@ -106,6 +108,66 @@ check "crossplay server: the supervisor stops with 0" "0" "$(supervise true)"
 check "crossplay: the owner's mods are taken back out of the game" "0_TFP_Harmony" "$(cd /mnt/7dtd/server/Mods && echo *)"
 check "crossplay: and the log says why" "1" "$(grep -c 'NOT loaded: consoles cannot join' /tmp/supervisor.log)"
 check "crossplay: the list was not downloaded again" "0" "$(grep -c 'downloading mod' /tmp/supervisor.log)"
+
+# --- The restart marker and the stop grace ------------------------------------------------------
+# The stand-in server has no console, so a restart request (the marker) is never honoured on its
+# own: what happens to it is the supervisor's grace alone. Short grace, to keep the test quick.
+marker=/tmp/flux-restart-requested
+game_pid() { pgrep -f '7DaysToDieServer[.]x86_64' | head -1; }
+wait_log() { # pattern, half-seconds
+  local i
+  for ((i = 0; i < $2; i++)); do
+    grep -q "$1" /tmp/supervisor.log && return 0
+    sleep 0.5
+  done
+  return 1
+}
+start_supervisor() {
+  FLUX_CROSSPLAY=false FLUX_RESTART_BACKOFF=1 FLUX_STOP_GRACE=3 \
+    /opt/flux/flux-entrypoint.sh >/tmp/supervisor.log 2>&1 &
+  sup_pid=$!
+}
+stop_supervisor() {
+  kill -TERM "${sup_pid}" 2>/dev/null
+  wait "${sup_pid}" 2>/dev/null
+  rm -f "${marker}"
+}
+
+# A request that went away must not shorten the next one's grace. The supervisor kept the time it
+# first saw a marker for the whole generation, so the next request (the daily restart) was
+# SIGKILLed the moment it was made, before the save it asks for.
+start_supervisor
+wait_log 'starting the server' 60
+sleep 1
+game="$(game_pid)"
+echo 'scheduled first' >"${marker}"
+sleep 2
+rm -f "${marker}"
+sleep 3
+echo 'scheduled second' >"${marker}"
+sleep 1.5
+check "a second restart request gets a full grace of its own" "0" "$(status kill -0 "${game}")"
+check "and nothing was ended by force yet" "0" "$(grep -c 'ending it' /tmp/supervisor.log)"
+wait_log 'scheduled second: restarting the server in place' 10
+check "a request still not honoured after the grace is forced" "1" "$(grep -c 'ending it' /tmp/supervisor.log)"
+check "and counted as the restart it was" "1" "$(grep -c 'scheduled second: restarting the server in place' /tmp/supervisor.log)"
+stop_supervisor
+
+# A restart asked for while the server was still being prepared (here: a slow Steam update) is
+# not carried into the server that then starts: it killed that one FLUX_STOP_GRACE seconds in.
+touch /tmp/steam-slow
+start_supervisor
+wait_log 'updating the server from Steam' 20
+echo 'scheduled early' >"${marker}"
+wait_log 'starting the server' 60
+rm -f /tmp/steam-slow
+sleep 1
+game="$(game_pid)"
+sleep 4
+check "a restart asked for before the start does not kill the new server" "0" "$(status kill -0 "${game}")"
+check "nothing was ended by force" "0" "$(grep -c 'ending it' /tmp/supervisor.log)"
+check "and the log says what happened to it" "1" "$(grep -c 'asked for before the server started (scheduled early)' /tmp/supervisor.log)"
+stop_supervisor
 
 kill "${www_pid}" 2>/dev/null
 
