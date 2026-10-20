@@ -33,7 +33,10 @@ d="${FLUX_DATA_DIR}"
 m="${FLUX_MODS_DIR}"
 
 rm -f "${FLUX_RESTART_MARKER}"
-mkdir -p "${s}" "${d}" "${m}" "$(dirname "${FLUX_LOG}")" "${FLUX_GAME_LOG_DIR}"
+mkdir -p "${s}" "${d}" "${d}/flux" "${m}" "$(dirname "${FLUX_LOG}")" "${FLUX_GAME_LOG_DIR}"
+# An older image kept flux.log on the synced data volume: move it here, once.
+flux_log_migrate "${FLUX_DATA_DIR}/flux/flux.log"
+flux_banner "7 Days to Die"
 
 if ! branch="$(flux_effective_branch "${STEAM_BRANCH}" "${FLUX_CROSSPLAY}")"; then
   flux_log "ERROR STEAM_BRANCH='${STEAM_BRANCH}' is not a branch name; refusing to start"
@@ -224,6 +227,7 @@ start_generation() {
 
   log_file="${FLUX_GAME_LOG_DIR}/$(date +%Y%m%d-%H%M%S)-server.log"
   : >"${log_file}"
+  flux_banner "7 Days to Die"
   flux_log "starting the server (generation ${generation}), log ${log_file}"
   (
     cd "${s}" || exit 1

@@ -171,6 +171,14 @@ stop_supervisor
 
 kill "${www_pid}" 2>/dev/null
 
+# --- flux.log is local; the banner ----------------------------------------------------------------
+fl_srv=/mnt/7dtd/server
+check "flux.log is on the install volume" "0" "$(status test -s "${fl_srv}/flux-logs/flux.log")"
+check "and not on the synced data volume" "1" "$(status test -e "/mnt/7dtd/data/flux/flux.log")"
+check "the banner is in the container output" "0" "$(status grep -q '7 Days to Die server image by FluxCloud - https://runonflux.com' /tmp/supervisor.log)"
+check "and in flux.log" "0" "$(status grep -q 'Host this and 30+ other games in one click: https://runonflux.com/games' "${fl_srv}/flux-logs/flux.log")"
+check "at the container start and again for each generation" "1" "$([ "$(grep -c 'server image by FluxCloud' /tmp/supervisor.log)" -ge 2 ] && echo 1 || echo 0)"
+
 printf '\n%d passed, %d failed\n' "${pass}" "${fail}"
 if [ "${fail}" != "0" ]; then
   echo '--- last supervisor log ---'

@@ -59,8 +59,8 @@ being listed on consoles.
 
 | Path | What | On Flux |
 |---|---|---|
-| `/mnt/7dtd/server` | The install, about 17 GB. Disposable: SteamCMD rebuilds it | `ml:` (local, never synced) |
-| `/mnt/7dtd/data` | `serverconfig.xml`, `Saves/`, `GeneratedWorlds/`, `backups/`, `logs/`, `flux/flux.log` | primary, `g:` |
+| `/mnt/7dtd/server` | The install, about 17 GB. Disposable: SteamCMD rebuilds it. Also `flux-logs/flux.log` (our supervisor log, 5 MB then one `.1`): local, never synced | `ml:` (local, never synced) |
+| `/mnt/7dtd/data` | `serverconfig.xml`, `Saves/`, `GeneratedWorlds/`, `backups/`, `logs/` | primary, `g:` |
 | `/mnt/7dtd/mods` | The owner's mods, one folder per mod | `m:` |
 
 Ports: 26900 TCP/UDP, 26901-26902 UDP. The telnet console (8081) is for the supervisor; with no
@@ -98,6 +98,7 @@ any change to what the image does. It needs `DOCKERHUB_USERNAME` and `DOCKERHUB_
 
 ## Versions
 
+- **1.0.3**: `flux.log` moved off the synced data volume to `/mnt/7dtd/server/flux-logs/flux.log` (5 MB, one `.1`; an old one is moved there once); start-up banner; the weekly rebuild only when it has something to apply (new script `.github/ci/needs-rebuild.sh`).
 - **1.0.2**: a restart is never forced early. The stop grace (`FLUX_STOP_GRACE`) counted from the
   first restart request of the whole generation, so once one had come and gone the next, the
   daily restart included, was SIGKILLed the moment it was asked for, before its save. And a

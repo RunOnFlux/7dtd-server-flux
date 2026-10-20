@@ -56,5 +56,5 @@ and gets a line under "Versions" in the README.
 - **The unit tests run with the machine's Python, not the image's.** A module or tool the image
   lacks passes them and fails in production (1.0.0: `python3-minimal`, no `zipfile`). Anything a
   script newly needs gets a check in `tests/image/in-container.sh`.
-- **Our log lives in `data/flux/`, the game's in `data/logs/`.** Keep them apart if a panel ever
-  reads the newest game log.
+- **`flux.log` is local** (`$FLUX_SERVER_DIR/flux-logs/flux.log`, 5 MB then one `.1`), never on the synced data volume: a constantly written file there is constant Syncthing traffic. `flux_log_migrate` moves an old one off the data volume at start. `flux_banner` prints the FluxCloud banner at container start and every generation; its text is tested.
+- **The scheduled CI run publishes only with something to apply** (`.github/ci/needs-rebuild.sh`): urgent security updates, or commits on main since the published `:latest` (label `org.opencontainers.image.revision`) that touch the image inputs.
