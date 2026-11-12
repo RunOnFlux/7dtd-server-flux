@@ -110,6 +110,20 @@ check "all three on the volume" "Bare_Mod_ MyMod Other" "$(cd "${tmp}/mods" && e
 check "no ModInfo.xml is refused" "1" "$(status python3 scripts/flux-unpack.py "${tmp}/empty.zip" "${tmp}/mods")"
 check "a path outside is refused" "1" "$(status python3 scripts/flux-unpack.py "${tmp}/evil.zip" "${tmp}/mods")"
 check "nothing escaped" "1" "$(status test -e "${tmp}/escape")"
+# A zip made on Windows keeps "\\" in its entry names (Tier 7 Expansion's releases): same mod, same folder
+python3 - "${tmp}/win.zip" "${tmp}/winevil.zip" <<'EOF'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as z:
+    z.writestr("WinMod\\ModInfo.xml", '<xml><Name value="WinMod" /></xml>')
+    z.writestr("WinMod\\Config\\items.xml", "<configs/>")
+with zipfile.ZipFile(sys.argv[2], "w") as z:
+    z.writestr("..\\escape2\\ModInfo.xml", "x")
+EOF
+mkdir -p "${tmp}/mods2"
+check "backslash entry names still unpack as a folder" "WinMod" "$(python3 scripts/flux-unpack.py "${tmp}/win.zip" "${tmp}/mods2")"
+check "and the files are in their sub-folders" "items.xml" "$(ls "${tmp}/mods2/WinMod/Config")"
+check "a backslash path outside is refused" "1" "$(status python3 scripts/flux-unpack.py "${tmp}/winevil.zip" "${tmp}/mods2")"
+check "nothing escaped that way either" "1" "$(status test -e "${tmp}/escape2")"
 
 # --- serverconfig.xml --------------------------------------------------------------------------
 cfg="${tmp}/serverconfig.xml"

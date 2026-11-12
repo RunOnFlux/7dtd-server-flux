@@ -26,11 +26,23 @@ def extract(archive, into):
     root = os.path.realpath(into)
     if zipfile.is_zipfile(archive):
         with zipfile.ZipFile(archive) as z:
-            for name in z.namelist():
+            # Zips made on Windows by some tools keep "\\" in the entry names (Tier 7 Expansion's
+            # releases do): read as one file name on Linux, so no ModInfo.xml was ever found. The
+            # separator is normalised BEFORE the path is checked, so "..\\x" is refused as well.
+            members = []
+            for info in z.infolist():
+                name = info.filename.replace("\\", "/")
                 target = os.path.realpath(os.path.join(root, name))
                 if not target.startswith(root + os.sep) and target != root:
-                    raise ValueError("unsafe path in archive: %s" % name)
-            z.extractall(root)
+                    raise ValueError("unsafe path in archive: %s" % info.filename)
+                members.append((info, name, target))
+            for info, name, target in members:
+                if name.endswith("/"):
+                    os.makedirs(target, exist_ok=True)
+                    continue
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with z.open(info) as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
     elif tarfile.is_tarfile(archive):
         with tarfile.open(archive) as t:
             for member in t.getmembers():
