@@ -208,6 +208,37 @@ flux_backup_keep() {
   printf '%s' "${value}"
 }
 
+# $1 = mtime (epoch) of the newest snapshot, 0 for none; $2 = now (epoch); $3 = FLUX_BACKUP_MIN_MINUTES
+# as given. Succeeds when a new pre-start snapshot is due. A restart loop (a crash, a customer
+# restarting ten times in a morning) must not rotate the good snapshots away with copies of the
+# same world: the newest one stays until it is at least this old. Default 30, junk is 30, 0 = always.
+flux_backup_due() {
+  local newest="${1:-0}" now="${2:-0}" min="${3:-30}"
+  [[ "${newest}" =~ ^[0-9]+$ ]] || newest=0
+  [[ "${now}" =~ ^[0-9]+$ ]] || now=0
+  [[ "${min}" =~ ^[0-9]+$ ]] || min=30
+  newest=$((10#${newest}))
+  now=$((10#${now}))
+  min=$((10#${min}))
+  [ "${newest}" -gt 0 ] || return 0
+  [ $((now - newest)) -ge $((min * 60)) ]
+}
+
+# $1 = backup dir, $2 = a path inside the archives. Prints the newest world snapshot that holds
+# it, or nothing. Used to get a serverconfig.xml back when the file is gone but the world is not.
+flux_snapshot_with() {
+  local f files=()
+  # shellcheck disable=SC2012  # names are ours, no spaces
+  mapfile -t files < <(ls -t "$1"/*-world.tar.gz 2>/dev/null)
+  for f in "${files[@]}"; do
+    if tar -tzf "${f}" "$2" >/dev/null 2>&1; then
+      printf '%s' "${f}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # ---------------------------------------------------------------------------------------------
 # Mods. The install's Mods folder already holds the game's own (0_TFP_Harmony,
 # TFP_CommandExtensions, Xample_MarkersMod in V3: shipped by The Fun Pimps, part of the vanilla

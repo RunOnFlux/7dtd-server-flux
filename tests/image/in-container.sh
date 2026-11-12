@@ -179,6 +179,42 @@ check "the banner is in the container output" "0" "$(status grep -q '7 Days to D
 check "and in flux.log" "0" "$(status grep -q 'Host this and 30+ other games in one click: https://runonflux.com/games' "${fl_srv}/flux-logs/flux.log")"
 check "at the container start and again for each generation" "1" "$([ "$(grep -c 'server image by FluxCloud' /tmp/supervisor.log)" -ge 2 ] && echo 1 || echo 0)"
 
+# --- The pre-start snapshot: settings travel with the world, restart loops do not rotate it ------
+bd=/mnt/7dtd/data
+rm -rf "${bd}/backups" "${bd}/serverconfig.xml" "${bd}/Saves"
+mkdir -p "${bd}/Saves/World/Game"
+echo save >"${bd}/Saves/World/Game/main.ttw"
+check "a first start with a world: the supervisor stops with 0" "0" "$(supervise false)"
+check "one snapshot was taken" "1" "$(find "${bd}/backups" -name "*-world.tar.gz" | wc -l)"
+check "and it holds serverconfig.xml beside the world" "2" "$(tar -tzf "${bd}"/backups/*-world.tar.gz | grep -cE '^(serverconfig.xml|Saves/World/Game/main.ttw)$')"
+# The snapshot's settings carry a marker, so a restore is told apart from the defaults being copied.
+mkdir -p /tmp/snapx && tar -xzf "${bd}"/backups/*-world.tar.gz -C /tmp/snapx
+sed -i 's|</ServerSettings>|<!-- restored-marker --></ServerSettings>|' /tmp/snapx/serverconfig.xml
+snap="$(find "${bd}/backups" -name "*-world.tar.gz")"
+tar -C /tmp/snapx -czf "${snap}" Saves serverconfig.xml
+rm -f "${bd}/serverconfig.xml"
+check "a restart with the settings lost: the supervisor stops with 0" "0" "$(supervise false)"
+check "the settings were restored from the snapshot" "1" "$(grep -c 'was missing but the world is not: restored it' /tmp/supervisor.log)"
+check "and are the snapshot's, not the defaults" "1" "$(grep -c 'restored-marker' "${bd}/serverconfig.xml")"
+check "a restart right after another adds no snapshot" "1" "$(find "${bd}/backups" -name "*-world.tar.gz" | wc -l)"
+check "and the log says why" "1" "$(grep -c 'not adding another' /tmp/supervisor.log)"
+# A restart somebody asked for (the daily one, the panel's: the marker says "scheduled") always
+# takes a snapshot, however young the newest is. The stand-in server has no console, so the
+# supervisor's grace ends it.
+start_supervisor
+wait_log 'starting the server' 60
+sleep 1
+echo 'scheduled restart requested from the Flux panel' >"${marker}"
+wait_log 'restarting the server in place' 20
+wait_log 'world backed up' 20
+sleep 1
+check "a restart somebody asked for takes a snapshot even when the newest is young" "2" "$(find "${bd}/backups" -name "*-world.tar.gz" | wc -l)"
+stop_supervisor
+rm -f "${bd}/serverconfig.xml"
+rm -rf "${bd}/backups"
+check "no snapshot to restore from: the supervisor still starts" "0" "$(supervise false)"
+check "and warns that the defaults load another world" "1" "$(grep -c 'no snapshot holds one' /tmp/supervisor.log)"
+
 printf '\n%d passed, %d failed\n' "${pass}" "${fail}"
 if [ "${fail}" != "0" ]; then
   echo '--- last supervisor log ---'

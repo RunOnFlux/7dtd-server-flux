@@ -33,6 +33,7 @@ marketplace sells:
 | `FLUX_RESTART_WARN_MINUTES` | `5` | Chat warning before it, 0 to 30, repeated at one minute |
 | `TZ` | UTC | Timezone of `FLUX_RESTART_TIME` |
 | `FLUX_BACKUP_KEEP` | `2` | World backups kept (0 turns them off, 10 at most) |
+| `FLUX_BACKUP_MIN_MINUTES` | `30` | No new world backup while the newest is younger than this (0 = always one); keeps a crash loop or container restart from rotating the good ones away; a restart someone asked for always takes one |
 | `MODS_URLS` | empty | Comma-separated `.zip`/`.tar.gz` mod archives, downloaded onto the mods volume once per list |
 | `SKIP_UPDATE` | empty | `true`: start the installed build without asking Steam |
 | `FLUX_STOP_GRACE` | `60` | Seconds a restart may take to save before it is forced |
@@ -98,6 +99,7 @@ any change to what the image does. It needs `DOCKERHUB_USERNAME` and `DOCKERHUB_
 
 ## Versions
 
+- **1.0.4**: the pre-start snapshot also holds `serverconfig.xml`; a new one is skipped while the newest is under `FLUX_BACKUP_MIN_MINUTES` (30) old, so a crash loop or a container restart no longer rotates the good ones away (a restart somebody asked for, the daily one or the panel's, always takes one); a missing `serverconfig.xml` next to an existing world is restored from the newest snapshot that holds one instead of loading default Navezgane (ticket 2026-11-11), and a warning says so when none does.
 - **1.0.3**: `flux.log` moved off the synced data volume to `/mnt/7dtd/server/flux-logs/flux.log` (5 MB, one `.1`; an old one is moved there once); start-up banner; the weekly rebuild only when it has something to apply (new script `.github/ci/needs-rebuild.sh`).
 - **1.0.2**: a restart is never forced early. The stop grace (`FLUX_STOP_GRACE`) counted from the
   first restart request of the whole generation, so once one had come and gone the next, the

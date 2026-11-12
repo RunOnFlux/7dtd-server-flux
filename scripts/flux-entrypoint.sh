@@ -52,6 +52,8 @@ tail_pid=""
 scheduler_pid=""
 terminating=0
 generation=0
+# 1 when the generation about to start follows a restart somebody asked for (see backup_world).
+planned_start=0
 restart_history=()
 
 # Asks the running server to save and exit. The console's `shutdown` saves the world and quits
@@ -109,7 +111,18 @@ update_server() {
 }
 
 prepare_config() {
-  local line
+  local line snap
+  if [ ! -f "${FLUX_SERVERCONFIG}" ] && [ -n "$(ls -A "${d}/Saves" 2>/dev/null)" ] && [ "$(dirname "${FLUX_SERVERCONFIG}")" = "${d}" ]; then
+    # A world exists and its settings do not (the volume came back without them): the defaults
+    # would load another world (GameWorld=Navezgane) and look like a reset. Take them from the
+    # newest snapshot that holds them.
+    snap="$(flux_snapshot_with "${FLUX_BACKUP_DIR}" "$(basename "${FLUX_SERVERCONFIG}")")" || snap=""
+    if [ -n "${snap}" ] && tar -xzf "${snap}" -C "${d}" "$(basename "${FLUX_SERVERCONFIG}")" 2>/dev/null; then
+      flux_log "WARN $(basename "${FLUX_SERVERCONFIG}") was missing but the world is not: restored it from ${snap}"
+    else
+      flux_log "WARN $(basename "${FLUX_SERVERCONFIG}") is missing and no snapshot holds one: the server starts with defaults, so the world may not be the one you expect"
+    fi
+  fi
   if [ ! -f "${FLUX_SERVERCONFIG}" ]; then
     flux_log "$(basename "${FLUX_SERVERCONFIG}") not found: copying the server's defaults"
     cp "${s}/serverconfig.xml" "${FLUX_SERVERCONFIG}" || return 1
@@ -183,12 +196,26 @@ install_mods() {
 # A backup of the world while nothing is running, so it is always consistent: before every
 # start, which with a daily restart is a daily backup.
 backup_world() {
-  local keep file parts=()
+  local keep file newest parts=()
   keep="$(flux_backup_keep "${FLUX_BACKUP_KEEP:-2}")"
   [ "${keep}" -gt 0 ] || return 0
   [ -d "${d}/Saves" ] && parts+=(Saves)
   [ -d "${d}/GeneratedWorlds" ] && parts+=(GeneratedWorlds)
   [ "${#parts[@]}" -gt 0 ] || return 0
+  # The newest snapshot is young: a crash loop or a platform restart must not rotate the good ones
+  # away with copies of the same world (see flux_backup_due).
+  newest="$(find "${FLUX_BACKUP_DIR}" -maxdepth 1 -name '*-world.tar.gz' -printf '%T@\n' 2>/dev/null | sort -n | tail -1 | cut -d. -f1)"
+  newest="${newest:-0}"
+  # ...except a restart someone asked for (the daily one, the panel's restart, "snapshot now", a
+  # roll back or an upload: their marker says "scheduled"), which always takes one.
+  if [ "${planned_start}" != "1" ] && ! flux_backup_due "${newest}" "$(date +%s)" "${FLUX_BACKUP_MIN_MINUTES:-30}"; then
+    flux_log "the newest world backup is under ${FLUX_BACKUP_MIN_MINUTES:-30} minutes old: not adding another"
+    return 0
+  fi
+  # The settings travel with the world: a lost serverconfig.xml starts a default world otherwise
+  # (the file says which GameWorld to load). Restoring a snapshot from the panel only moves Saves
+  # and GeneratedWorlds, so this file is only ever read back by prepare_config below.
+  [ -f "${FLUX_SERVERCONFIG}" ] && [ "$(dirname "${FLUX_SERVERCONFIG}")" = "${d}" ] && parts+=("$(basename "${FLUX_SERVERCONFIG}")")
   mkdir -p "${FLUX_BACKUP_DIR}"
   file="${FLUX_BACKUP_DIR}/$(date +%Y%m%d-%H%M%S)-world.tar.gz"
   if tar -C "${d}" -cf - "${parts[@]}" 2>/dev/null | gzip -1 >"${file}.part" && mv "${file}.part" "${file}"; then
@@ -316,6 +343,8 @@ while true; do
   fi
 
   [ -z "${reason}" ] && reason="the server ended on its own (exit ${rc})"
+  planned_start=0
+  flux_restart_counts "${reason}" || planned_start=1
 
   if flux_restart_counts "${reason}"; then
     now="$(date -u +%s)"

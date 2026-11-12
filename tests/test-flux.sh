@@ -63,6 +63,22 @@ check "backups default to 2" "2" "$(flux_backup_keep '')"
 check "backups off" "0" "$(flux_backup_keep 0)"
 check "backups capped at 10" "10" "$(flux_backup_keep 50)"
 check "backups: junk is 2" "2" "$(flux_backup_keep lots)"
+# A snapshot is due when none exists or the newest is at least FLUX_BACKUP_MIN_MINUTES old
+check "snapshot due: none yet" "0" "$(status flux_backup_due 0 10000 30)"
+check "snapshot due: 29 min old, not due" "1" "$(status flux_backup_due 8260 10000 30)"
+check "snapshot due: 30 min old" "0" "$(status flux_backup_due 8200 10000 30)"
+check "snapshot due: default is 30" "1" "$(status flux_backup_due 8260 10000 '')"
+check "snapshot due: junk is 30" "1" "$(status flux_backup_due 8260 10000 soon)"
+check "snapshot due: 0 means always" "0" "$(status flux_backup_due 9999 10000 0)"
+# Which snapshot holds the settings file: the newest one that does
+mkdir -p "${tmp}/snaps/src/Saves"
+echo old >"${tmp}/snaps/src/serverconfig.xml"
+tar -C "${tmp}/snaps/src" -czf "${tmp}/snaps/20260101-000000-world.tar.gz" Saves serverconfig.xml
+tar -C "${tmp}/snaps/src" -czf "${tmp}/snaps/20260102-000000-world.tar.gz" Saves
+touch -d '2026-01-01' "${tmp}/snaps/20260101-000000-world.tar.gz"
+touch -d '2026-01-02' "${tmp}/snaps/20260102-000000-world.tar.gz"
+check "settings come from the newest snapshot that holds them" "${tmp}/snaps/20260101-000000-world.tar.gz" "$(flux_snapshot_with "${tmp}/snaps" serverconfig.xml)"
+check "no snapshot holds them" "1" "$(status flux_snapshot_with "${tmp}/snaps" nothing.xml)"
 mkdir -p "${tmp}/rot"
 for n in 1 2 3 4; do touch -d "2026-01-0${n}" "${tmp}/rot/2026010${n}-world.tar.gz"; done
 touch "${tmp}/rot/keep-me.txt"
